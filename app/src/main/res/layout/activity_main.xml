@@ -53,6 +53,30 @@
             android:textSize="18sp"
             android:textStyle="bold" />
 
+        <LinearLayout
+            android:id="@+id/recordingIndicatorRow"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <View
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:background="#FF1744" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="RECORDING LIVE"
+                android:textColor="#FF5252"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
         <TextView
             android:id="@+id/statusText"
             android:layout_width="wrap_content"
@@ -89,7 +113,7 @@
             android:layout_height="wrap_content"
             android:text="5 Asides Near Me"
             android:textColor="#FFFFFF"
-            android:textSize="28sp"
+            android:textSize="30sp"
             android:textStyle="bold" />
 
         <TextView
@@ -163,35 +187,13 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <Button
-            android:id="@+id/saveLastButton"
-            android:layout_width="match_parent"
-            android:layout_height="58dp"
-            android:layout_marginTop="12dp"
-            android:backgroundTint="#B71C1C"
-            android:text="SAVE LAST 15S"
-            android:textAllCaps="true"
-            android:textColor="#FFFFFF"
-            android:textStyle="bold" />
-
-        <ProgressBar
-            android:id="@+id/saveBufferProgress"
-            style="?android:attr/progressBarStyleHorizontal"
-            android:layout_width="match_parent"
-            android:layout_height="6dp"
-            android:layout_marginTop="8dp"
-            android:max="15"
-            android:progress="0"
-            android:progressBackgroundTint="#223040"
-            android:progressTint="#42A5F5" />
-
         <TextView
             android:id="@+id/tagLabel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
             android:layout_marginBottom="10dp"
-            android:text="Clip Type"
+            android:text="Tap event type to save highlight"
             android:textColor="#90CAF9"
             android:textSize="12sp"
             android:textStyle="bold" />
@@ -205,7 +207,7 @@
             <Button
                 android:id="@+id/goalButton"
                 android:layout_width="0dp"
-                android:layout_height="50dp"
+                android:layout_height="54dp"
                 android:layout_weight="1"
                 android:backgroundTint="#1E2A38"
                 android:text="GOAL ⚽"
@@ -219,7 +221,7 @@
             <Button
                 android:id="@+id/saveTagButton"
                 android:layout_width="0dp"
-                android:layout_height="50dp"
+                android:layout_height="54dp"
                 android:layout_weight="1"
                 android:backgroundTint="#1E2A38"
                 android:text="SAVE 🧤"
@@ -233,14 +235,139 @@
             <Button
                 android:id="@+id/skillButton"
                 android:layout_width="0dp"
-                android:layout_height="50dp"
+                android:layout_height="54dp"
                 android:layout_weight="1"
                 android:backgroundTint="#1E2A38"
                 android:text="SKILL ✨"
                 android:textColor="#F8FAFC"
                 android:textStyle="bold" />
         </LinearLayout>
+    </LinearLayout>
 
+    <LinearLayout
+        android:id="@+id/centerEventOverlay"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="#7A05070B"
+        android:clickable="false"
+        android:elevation="16dp"
+        android:focusable="false"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="24dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            android:id="@+id/centerEventText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="GOAL!!!"
+            android:textColor="#FFFFFF"
+            android:textSize="42sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/eventWaitText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:gravity="center"
+            android:text="WAIT 5s TO COMPLETE BUFFER"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <ProgressBar
+            android:id="@+id/eventWaitProgress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="220dp"
+            android:layout_height="8dp"
+            android:layout_marginTop="16dp"
+            android:max="15"
+            android:progress="0"
+            android:progressBackgroundTint="#3A4653"
+            android:progressTint="#FF1744"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/playerOverlay"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="#E60B1220"
+        android:elevation="22dp"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="18dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            android:id="@+id/playerOverlayTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Who made that GOAL?"
+            android:textColor="#FFFFFF"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/playerOverlaySubtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:layout_marginBottom="16dp"
+            android:text="Pick the player before the next moment"
+            android:textColor="#B0BEC5"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal">
+
+            <LinearLayout
+                android:id="@+id/teamAContainer"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="#660F172A"
+                android:orientation="vertical"
+                android:padding="10dp" />
+
+            <Space
+                android:layout_width="12dp"
+                android:layout_height="match_parent" />
+
+            <LinearLayout
+                android:id="@+id/teamBContainer"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="#660F172A"
+                android:orientation="vertical"
+                android:padding="10dp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/playerOverlayHint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:text="Select player now • 5s left • no selection = unclassified clip"
+            android:textColor="#90CAF9"
+            android:textSize="12sp"
+            android:textStyle="bold" />
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

@@ -87,13 +87,15 @@ class HighlightRecorderManager(
     }
 
     fun saveHighlight(tag: String) {
+
         val wasRunning = rollingBufferEngine.isRolling()
 
         if (wasRunning) {
-            listener.onStatusChanged("Finalizing current recording...")
+            listener.onStatusChanged("Finalizing recording...")
+
             rollingBufferEngine.stopRollingBuffer { finalizedFile ->
                 if (finalizedFile == null) {
-                    listener.onError("Could not finalize recording for export")
+                    listener.onError("Could not finalize recording")
                     return@stopRollingBuffer
                 }
 
@@ -101,16 +103,15 @@ class HighlightRecorderManager(
                     sourceFile = finalizedFile,
                     tag = tag,
                     onComplete = {
-                        if (wasRunning) {
-                            rollingBufferEngine.startRollingBuffer()
-                        }
+                        rollingBufferEngine.startRollingBuffer()
                     }
                 )
             }
+
         } else {
             val finalizedFile = rollingBufferEngine.getLastFinalizedFile()
             if (finalizedFile == null) {
-                listener.onError("No finalized recording available yet")
+                listener.onError("No recording available")
                 return
             }
 
