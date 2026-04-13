@@ -46,6 +46,7 @@ dependencies {
     val cameraxVersion = "1.5.1"
     val media3Version = "1.10.0"
 
+    implementation("com.google.firebase:firebase-storage")
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("com.google.android.material:material:1.12.0")
@@ -62,8 +63,8 @@ dependencies {
     implementation("androidx.media3:media3-common:$media3Version")
 
     implementation(platform("com.google.firebase:firebase-bom:34.12.0"))
-    implementation("com.google.firebase:firebase-firestore-ktx")
-    implementation("com.google.firebase:firebase-auth-ktx")
+    implementation("com.google.firebase:firebase-firestore")
+    implementation("com.google.firebase:firebase-auth")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

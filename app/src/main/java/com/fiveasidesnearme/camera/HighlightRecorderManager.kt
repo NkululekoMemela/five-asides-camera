@@ -3,6 +3,7 @@ package com.fiveasidesnearme.camera
 import android.content.Context
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import java.io.File
 import java.util.concurrent.Executor
 import java.util.concurrent.ExecutorService
 
@@ -20,7 +21,19 @@ class HighlightRecorderManager(
         fun onRollingStateChanged(isRunning: Boolean)
         fun onHighlightSaved(message: String)
         fun onError(message: String)
+
+        /**
+         * Called after a highlight clip has been exported.
+         * For now this gives MainActivity a hook for future Firebase upload logic.
+         */
+        fun onHighlightExported(
+            exportedFile: File,
+            tag: String,
+            isOfficialMatch: Boolean
+        )
     }
+
+    private var isOfficialMatchContext: Boolean = false
 
     private val cameraSessionController = CameraSessionController(
         context = context,
@@ -71,8 +84,24 @@ class HighlightRecorderManager(
             override fun onError(message: String) {
                 listener.onError(message)
             }
+
+            override fun onHighlightExported(
+                exportedFile: File,
+                tag: String,
+                isOfficialMatch: Boolean
+            ) {
+                listener.onHighlightExported(
+                    exportedFile = exportedFile,
+                    tag = tag,
+                    isOfficialMatch = isOfficialMatch
+                )
+            }
         }
     )
+
+    fun setOfficialMatchContext(isOfficialMatch: Boolean) {
+        isOfficialMatchContext = isOfficialMatch
+    }
 
     fun bindCamera() {
         cameraSessionController.bindCamera(rollingBufferEngine.videoCapture)
@@ -87,7 +116,6 @@ class HighlightRecorderManager(
     }
 
     fun saveHighlight(tag: String) {
-
         val wasRunning = rollingBufferEngine.isRolling()
 
         if (wasRunning) {
@@ -102,12 +130,12 @@ class HighlightRecorderManager(
                 highlightExportManager.exportLast15Seconds(
                     sourceFile = finalizedFile,
                     tag = tag,
+                    isOfficialMatch = isOfficialMatchContext,
                     onComplete = {
                         rollingBufferEngine.startRollingBuffer()
                     }
                 )
             }
-
         } else {
             val finalizedFile = rollingBufferEngine.getLastFinalizedFile()
             if (finalizedFile == null) {
@@ -118,6 +146,7 @@ class HighlightRecorderManager(
             highlightExportManager.exportLast15Seconds(
                 sourceFile = finalizedFile,
                 tag = tag,
+                isOfficialMatch = isOfficialMatchContext,
                 onComplete = {}
             )
         }

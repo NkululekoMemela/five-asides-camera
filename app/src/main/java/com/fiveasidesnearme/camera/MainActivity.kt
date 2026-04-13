@@ -27,6 +27,7 @@ import androidx.core.view.WindowInsetsCompat
 import com.fiveasidesnearme.camera.databinding.ActivityMainBinding
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.ExecutorService
@@ -45,7 +46,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cameraExecutor: ExecutorService
     private var recorderManager: HighlightRecorderManager? = null
 
+    private var sourceApp: String? = null
     private var matchIsLive: Boolean = false
+    private var canUseOutsideOfficialMatch: Boolean = true
+
     private var teamAId: String? = null
     private var teamBId: String? = null
     private var teamAName: String = "Team A"
@@ -125,21 +129,50 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleIncomingLaunchIntent(intent)
+
+        recorderManager?.setOfficialMatchContext(isOfficialMatchContext())
+
+        if (::binding.isInitialized) {
+            binding.statusText.text = currentIdleStatusText()
+            updateOfflineWarningVisibility()
+        }
     }
 
     private fun handleIncomingLaunchIntent(incomingIntent: Intent?) {
         matchIsLive = incomingIntent?.getBooleanExtra("matchIsLive", false) == true
 
-        val uri = incomingIntent?.data ?: return
-        if (uri.scheme != "fiveasidesnearmecamera" || uri.host != "open") return
+        val uri = incomingIntent?.data ?: run {
+            if (::binding.isInitialized) {
+                binding.statusText.text = currentIdleStatusText()
+                updateOfflineWarningVisibility()
+            }
+            return
+        }
 
-        val rawPayload = uri.getQueryParameter("payload") ?: return
+        if (uri.scheme != "fiveasidesnearmecamera" || uri.host != "open") {
+            if (::binding.isInitialized) {
+                binding.statusText.text = currentIdleStatusText()
+                updateOfflineWarningVisibility()
+            }
+            return
+        }
+
+        val rawPayload = uri.getQueryParameter("payload") ?: run {
+            if (::binding.isInitialized) {
+                binding.statusText.text = currentIdleStatusText()
+                updateOfflineWarningVisibility()
+            }
+            return
+        }
 
         try {
             val decoded = URLDecoder.decode(rawPayload, StandardCharsets.UTF_8.toString())
             val payload = JSONObject(decoded)
 
+            sourceApp = payload.optString("sourceApp").trim().ifBlank { null }
             matchIsLive = payload.optBoolean("matchIsLive", matchIsLive)
+            canUseOutsideOfficialMatch = payload.optBoolean("canUseOutsideOfficialMatch", true)
+
             launchMatchId = payload.optString("matchId").takeIf { it.isNotBlank() }
             launchMatchNo = payload.optInt("matchNo", -1).takeIf { it > 0 }
             launchSeasonId = payload.optString("seasonId").takeIf { it.isNotBlank() }
@@ -165,12 +198,13 @@ class MainActivity : AppCompatActivity() {
             }
 
             if (::binding.isInitialized) {
-                binding.statusText.text =
-                    if (matchIsLive) "Connected to live match" else "Camera ready"
+                binding.statusText.text = currentIdleStatusText()
+                updateOfflineWarningVisibility()
             }
         } catch (_: Exception) {
             if (::binding.isInitialized) {
-                binding.statusText.text = "Camera ready"
+                binding.statusText.text = currentIdleStatusText()
+                updateOfflineWarningVisibility()
             }
         }
     }
@@ -227,6 +261,10 @@ class MainActivity : AppCompatActivity() {
             .ifBlank { "player_${System.currentTimeMillis()}" }
     }
 
+    private fun isOfficialMatchContext(): Boolean {
+        return sourceApp == "TurfKings" && matchIsLive
+    }
+
     private fun applyWindowInsets() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.rootLayout) { _, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -250,7 +288,7 @@ class MainActivity : AppCompatActivity() {
             showRecordingBannerSequence()
             startInitialBufferProgressUi()
             setRecordingUi(true)
-            binding.statusText.text = "Recording live"
+            binding.statusText.text = currentRecordingStatusText()
             Toast.makeText(this, "Video recording started", Toast.LENGTH_SHORT).show()
         }
 
@@ -268,7 +306,8 @@ class MainActivity : AppCompatActivity() {
         binding.saveTagButton.setOnClickListener { onEventActionTapped("save") }
         binding.skillButton.setOnClickListener { onEventActionTapped("skill") }
 
-        binding.statusText.text = if (matchIsLive) "Connected to live match" else "Camera ready"
+        binding.statusText.text = currentIdleStatusText()
+        updateOfflineWarningVisibility()
         setRecordingUi(false)
         updateEventActionButtons()
     }
@@ -336,14 +375,15 @@ class MainActivity : AppCompatActivity() {
     private fun completeEventSave(tag: String) {
         recorderManager?.saveHighlight(tag)
 
-        if (matchIsLive) {
+        if (isOfficialMatchContext()) {
             binding.rootLayout.postDelayed({
                 hideCenterEventOverlay()
                 showPlayerSelectionOverlay(tag)
             }, 900)
         } else {
             binding.eventWaitText.visibility = View.VISIBLE
-            binding.eventWaitText.text = "Saved locally to your phone"
+            binding.eventWaitText.text =
+                "Captured outside official kick off • saved to your phone only"
             binding.eventWaitProgress.visibility = View.VISIBLE
             binding.eventWaitProgress.progress = 15
 
@@ -370,10 +410,13 @@ class MainActivity : AppCompatActivity() {
             binding.eventWaitProgress.max = 15
             binding.eventWaitProgress.progress = progressValue
         } else {
-            binding.eventWaitText.visibility = if (matchIsLive) View.GONE else View.VISIBLE
-            binding.eventWaitProgress.visibility = if (matchIsLive) View.GONE else View.VISIBLE
-            if (!matchIsLive) {
-                binding.eventWaitText.text = "Saving to your phone"
+            binding.eventWaitText.visibility =
+                if (isOfficialMatchContext()) View.GONE else View.VISIBLE
+            binding.eventWaitProgress.visibility =
+                if (isOfficialMatchContext()) View.GONE else View.VISIBLE
+
+            if (!isOfficialMatchContext()) {
+                binding.eventWaitText.text = "Outside official kick off • saving to your phone only"
                 binding.eventWaitProgress.max = 15
                 binding.eventWaitProgress.progress = 15
             }
@@ -426,7 +469,7 @@ class MainActivity : AppCompatActivity() {
         endMatchConfirmTimer?.cancel()
         endMatchConfirmTimer = null
         isEndMatchConfirming = false
-        binding.statusText.text = "Recording live"
+        binding.statusText.text = currentRecordingStatusText()
         hideCenterEventOverlay()
         updateEventActionButtons()
         updateStartButtonState()
@@ -444,7 +487,8 @@ class MainActivity : AppCompatActivity() {
         hasRecordingSessionStarted = false
         hasShownKeepRecordingBanner = false
         setRecordingUi(false)
-        binding.statusText.text = "Match ended"
+        binding.statusText.text = currentStoppedStatusText()
+        updateOfflineWarningVisibility()
     }
 
     private fun showPlayerSelectionOverlay(tag: String) {
@@ -771,13 +815,55 @@ class MainActivity : AppCompatActivity() {
 
                     override fun onHighlightSaved(message: String) {
                         Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
-                        binding.statusText.text = "Recording live"
+                        binding.statusText.text = currentRecordingStatusText()
+                    }
+
+                    override fun onHighlightExported(
+                        exportedFile: File,
+                        tag: String,
+                        isOfficialMatch: Boolean
+                    ) {
+                        if (isOfficialMatch) {
+
+                            Toast.makeText(
+                                this@MainActivity,
+                                "Uploading highlight...",
+                                Toast.LENGTH_SHORT
+                            ).show()
+
+                            FirebaseUploader.uploadHighlight(
+                                file = exportedFile,
+                                matchId = launchMatchId,
+                                tag = tag,
+                                onSuccess = {
+                                    Toast.makeText(
+                                        this@MainActivity,
+                                        "🔥 Uploaded to Firebase",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                },
+                                onError = { error ->
+                                    Toast.makeText(
+                                        this@MainActivity,
+                                        "Upload failed: $error",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            )
+
+                        } else {
+                            Toast.makeText(
+                                this@MainActivity,
+                                "Saved locally — not an official match",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
                     }
 
                     override fun onError(message: String) {
                         if (isBenignRecordingError(message)) {
                             if (!isRecordingActive) {
-                                binding.statusText.text = "Camera ready"
+                                binding.statusText.text = currentIdleStatusText()
                             }
                             return
                         }
@@ -788,6 +874,7 @@ class MainActivity : AppCompatActivity() {
                 }
             )
 
+            recorderManager?.setOfficialMatchContext(isOfficialMatchContext())
             recorderManager?.bindCamera()
         }, ContextCompat.getMainExecutor(this))
     }
@@ -821,6 +908,35 @@ class MainActivity : AppCompatActivity() {
             "skill" -> skillGold
             else -> textWhite
         }
+    }
+
+    private fun currentIdleStatusText(): String {
+        return if (isOfficialMatchContext()) {
+            "Connected to live match"
+        } else {
+            "Outside official kick off • phone-only saves"
+        }
+    }
+
+    private fun currentRecordingStatusText(): String {
+        return if (isOfficialMatchContext()) {
+            "Recording live"
+        } else {
+            "Recording outside official kick off • phone-only saves"
+        }
+    }
+
+    private fun currentStoppedStatusText(): String {
+        return if (isOfficialMatchContext()) {
+            "Match ended"
+        } else {
+            "Capture ended • clips stay on this phone"
+        }
+    }
+
+    private fun updateOfflineWarningVisibility() {
+        binding.offlineWarningText.visibility =
+            if (isOfficialMatchContext()) View.GONE else View.VISIBLE
     }
 
     private fun Int.dp(): Int = (this * resources.displayMetrics.density).toInt()

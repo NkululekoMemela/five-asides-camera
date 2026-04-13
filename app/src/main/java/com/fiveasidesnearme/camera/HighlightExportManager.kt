@@ -26,6 +26,18 @@ class HighlightExportManager(
         fun onStatusChanged(message: String)
         fun onHighlightSaved(message: String)
         fun onError(message: String)
+
+        /**
+         * Called after the 15-second clip has been successfully exported.
+         * The caller can decide what to do next:
+         * - upload to Firebase if official
+         * - keep local only if casual
+         */
+        fun onHighlightExported(
+            exportedFile: File,
+            tag: String,
+            isOfficialMatch: Boolean
+        )
     }
 
     private val bufferDurationMs = 15_000L
@@ -33,6 +45,7 @@ class HighlightExportManager(
     fun exportLast15Seconds(
         sourceFile: File,
         tag: String,
+        isOfficialMatch: Boolean,
         onComplete: () -> Unit
     ) {
         if (!sourceFile.exists()) {
@@ -52,9 +65,15 @@ class HighlightExportManager(
         }
 
         val startMs = durationMs - bufferDurationMs
-        val outputFile = createOutputFile(tag)
+        val outputFile = createOutputFile(tag, isOfficialMatch)
 
-        listener.onStatusChanged("Exporting last 15 seconds...")
+        listener.onStatusChanged(
+            if (isOfficialMatch) {
+                "Exporting official highlight..."
+            } else {
+                "Exporting local highlight..."
+            }
+        )
 
         val clippedMediaItem = MediaItem.Builder()
             .setUri(Uri.fromFile(sourceFile))
@@ -82,8 +101,29 @@ class HighlightExportManager(
                         arrayOf("video/mp4"),
                         null
                     )
-                    listener.onStatusChanged("Highlight saved")
-                    listener.onHighlightSaved("Saved ${tag} clip to gallery")
+
+                    listener.onStatusChanged(
+                        if (isOfficialMatch) {
+                            "Official highlight exported"
+                        } else {
+                            "Local highlight exported"
+                        }
+                    )
+
+                    listener.onHighlightSaved(
+                        if (isOfficialMatch) {
+                            "Official ${tag} clip saved to gallery"
+                        } else {
+                            "Saved locally — not an official match"
+                        }
+                    )
+
+                    listener.onHighlightExported(
+                        exportedFile = outputFile,
+                        tag = tag,
+                        isOfficialMatch = isOfficialMatch
+                    )
+
                     onComplete()
                 }
 
@@ -117,15 +157,20 @@ class HighlightExportManager(
         }
     }
 
-    private fun createOutputFile(tag: String): File {
+    private fun createOutputFile(tag: String, isOfficialMatch: Boolean): File {
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+
         val baseDir = File(
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
             "FiveAsidesNearMeCamera"
         )
+
         if (!baseDir.exists()) {
             baseDir.mkdirs()
         }
-        return File(baseDir, "FANM_${tag}_${timestamp}.mp4")
+
+        val prefix = if (isOfficialMatch) "OFFICIAL" else "LOCAL"
+
+        return File(baseDir, "FANM_${prefix}_${tag}_${timestamp}.mp4")
     }
 }

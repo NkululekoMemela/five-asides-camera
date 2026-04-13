@@ -85,6 +85,17 @@
             android:text="Camera ready"
             android:textColor="#B0BEC5"
             android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/offlineWarningText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Outside official kick off. Highlights will save to this phone only."
+            android:textColor="#FFCDD2"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
     </LinearLayout>
 
     <LinearLayout
