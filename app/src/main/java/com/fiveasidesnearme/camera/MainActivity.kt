@@ -2,10 +2,13 @@ package com.fiveasidesnearme.camera
 
 import android.Manifest
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Typeface
+import android.net.Uri
 import android.os.Bundle
 import android.os.CountDownTimer
 import android.text.SpannableStringBuilder
@@ -13,6 +16,7 @@ import android.text.Spanned
 import android.text.style.RelativeSizeSpan
 import android.text.style.StyleSpan
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
@@ -29,6 +33,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.net.URLDecoder
+import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -90,6 +95,14 @@ class MainActivity : AppCompatActivity() {
     private val tagDefault = Color.parseColor("#122033")
     private val textWhite = Color.parseColor("#F8FAFC")
 
+    private val uiPrefs: SharedPreferences by lazy {
+        getSharedPreferences("fanm_camera_ui", MODE_PRIVATE)
+    }
+    private var dockDragEnabled: Boolean = false
+    private var dockTouchOffsetX = 0f
+    private var dockTouchOffsetY = 0f
+    private var lastKnownOrientation: Int = Configuration.ORIENTATION_UNDEFINED
+
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { grants ->
@@ -111,17 +124,44 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        lastKnownOrientation = resources.configuration.orientation
         cameraExecutor = Executors.newSingleThreadExecutor()
 
         handleIncomingLaunchIntent(intent)
 
         applyWindowInsets()
         setupUi()
+        setupLandscapeDockDrag()
 
         if (hasAllPermissions()) {
             setupCamera()
         } else {
             permissionLauncher.launch(REQUIRED_PERMISSIONS)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+
+        val currentOrientation = resources.configuration.orientation
+        if (lastKnownOrientation != Configuration.ORIENTATION_UNDEFINED &&
+            currentOrientation != lastKnownOrientation
+        ) {
+            lastKnownOrientation = currentOrientation
+            recreate()
+            return
+        }
+
+        lastKnownOrientation = currentOrientation
+
+        if (::binding.isInitialized) {
+            binding.rootLayout.post {
+                setupLandscapeDockDrag()
+                if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+                    restoreDockPosition()
+                    binding.bottomPanel.bringToFront()
+                }
+            }
         }
     }
 
@@ -135,6 +175,7 @@ class MainActivity : AppCompatActivity() {
         if (::binding.isInitialized) {
             binding.statusText.text = currentIdleStatusText()
             updateOfflineWarningVisibility()
+            setupLandscapeDockDrag()
         }
     }
 
@@ -310,6 +351,113 @@ class MainActivity : AppCompatActivity() {
         updateOfflineWarningVisibility()
         setRecordingUi(false)
         updateEventActionButtons()
+    }
+
+    private fun setupLandscapeDockDrag() {
+        if (resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE) {
+            binding.bottomPanel.setOnTouchListener(null)
+            binding.bottomPanel.setOnLongClickListener(null)
+            return
+        }
+
+        binding.bottomPanel.post {
+            restoreDockPosition()
+            binding.bottomPanel.bringToFront()
+        }
+
+        binding.bottomPanel.setOnLongClickListener {
+            dockDragEnabled = true
+            binding.bottomPanel.alpha = 0.92f
+            Toast.makeText(this, "Drag control dock", Toast.LENGTH_SHORT).show()
+            true
+        }
+
+        binding.bottomPanel.setOnTouchListener { view, event ->
+            if (!dockDragEnabled) return@setOnTouchListener false
+
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    dockTouchOffsetX = event.rawX - view.x
+                    dockTouchOffsetY = event.rawY - view.y
+                    true
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    val bounds = currentDockBounds()
+                    val targetX = event.rawX - dockTouchOffsetX
+                    val targetY = event.rawY - dockTouchOffsetY
+
+                    view.x = targetX.coerceIn(bounds.minX, bounds.maxX)
+                    view.y = targetY.coerceIn(bounds.minY, bounds.maxY)
+                    true
+                }
+
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    saveDockPosition(view.x, view.y)
+                    dockDragEnabled = false
+                    binding.bottomPanel.alpha = 1f
+                    view.performClick()
+                    true
+                }
+
+                else -> false
+            }
+        }
+    }
+
+    private data class DockBounds(
+        val minX: Float,
+        val maxX: Float,
+        val minY: Float,
+        val maxY: Float
+    )
+
+    private fun currentDockBounds(): DockBounds {
+        val root = binding.rootLayout
+        val panel = binding.bottomPanel
+
+        val horizontalMargin = 12.dp().toFloat()
+        val topSafe = max(horizontalMargin, binding.topOverlay.bottom.toFloat() + 12.dp().toFloat())
+        val bottomSafe = (root.height - panel.height - 16.dp()).toFloat().coerceAtLeast(topSafe)
+
+        val maxX = (root.width - panel.width - horizontalMargin).coerceAtLeast(horizontalMargin)
+        val maxY = bottomSafe.coerceAtLeast(topSafe)
+
+        return DockBounds(
+            minX = horizontalMargin,
+            maxX = maxX,
+            minY = topSafe,
+            maxY = maxY
+        )
+    }
+
+    private fun restoreDockPosition() {
+        if (resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE) return
+
+        val bounds = currentDockBounds()
+        val xRatio = uiPrefs.getFloat(PREF_DOCK_X_RATIO, 1f)
+        val yRatio = uiPrefs.getFloat(PREF_DOCK_Y_RATIO, 1f)
+
+        val xRange = (bounds.maxX - bounds.minX).coerceAtLeast(0f)
+        val yRange = (bounds.maxY - bounds.minY).coerceAtLeast(0f)
+
+        binding.bottomPanel.x = bounds.minX + (xRange * xRatio.coerceIn(0f, 1f))
+        binding.bottomPanel.y = bounds.minY + (yRange * yRatio.coerceIn(0f, 1f))
+    }
+
+    private fun saveDockPosition(x: Float, y: Float) {
+        val bounds = currentDockBounds()
+
+        val xRange = (bounds.maxX - bounds.minX).coerceAtLeast(1f)
+        val yRange = (bounds.maxY - bounds.minY).coerceAtLeast(1f)
+
+        val normalizedX = ((x - bounds.minX) / xRange).coerceIn(0f, 1f)
+        val normalizedY = ((y - bounds.minY) / yRange).coerceIn(0f, 1f)
+
+        uiPrefs.edit()
+            .putFloat(PREF_DOCK_X_RATIO, normalizedX)
+            .putFloat(PREF_DOCK_Y_RATIO, normalizedY)
+            .apply()
     }
 
     private fun onEventActionTapped(tag: String) {
@@ -594,7 +742,6 @@ class MainActivity : AppCompatActivity() {
                         "Selected: ${player.name}",
                         Toast.LENGTH_SHORT
                     ).show()
-                    // TODO: attach player + team metadata to saved highlight return payload / storage
                 }
             }
             container.addView(btn)
@@ -835,12 +982,54 @@ class MainActivity : AppCompatActivity() {
                                 file = exportedFile,
                                 matchId = launchMatchId,
                                 tag = tag,
-                                onSuccess = {
+                                onSuccess = { result ->
                                     Toast.makeText(
                                         this@MainActivity,
                                         "🔥 Uploaded to Firebase",
                                         Toast.LENGTH_SHORT
                                     ).show()
+
+                                    try {
+                                        val payload = JSONObject().apply {
+                                            put("clipId", result.clipId)
+                                            put("storagePath", result.storagePath)
+                                            put("downloadUrl", result.downloadUrl)
+                                            put("videoUrl", result.downloadUrl)
+                                            put("matchId", result.matchId)
+                                            put("matchNo", launchMatchNo)
+                                            put("seasonId", launchSeasonId)
+                                            put("gameFormat", launchGameFormat)
+                                            put("tag", tag)
+                                            put("teamId", pendingSelectedPlayer?.teamId ?: JSONObject.NULL)
+                                            put("teamName", pendingSelectedTeamName ?: JSONObject.NULL)
+                                            put("playerName", pendingSelectedPlayer?.name ?: JSONObject.NULL)
+                                            put("goalScorerName", if (tag == "goal") pendingSelectedPlayer?.name ?: JSONObject.NULL else JSONObject.NULL)
+                                            put("keeperName", if (tag == "save") pendingSelectedPlayer?.name ?: JSONObject.NULL else JSONObject.NULL)
+                                            put("skillPlayer", if (tag == "skill") pendingSelectedPlayer?.name ?: JSONObject.NULL else JSONObject.NULL)
+                                            put("sourceApp", "FiveAsidesNearMeCamera")
+                                            put("timestamp", System.currentTimeMillis())
+                                        }
+
+                                        val encodedPayload = URLEncoder.encode(
+                                            payload.toString(),
+                                            StandardCharsets.UTF_8.toString()
+                                        )
+
+                                        val returnIntent = Intent(
+                                            Intent.ACTION_VIEW,
+                                            Uri.parse("turfkings://camera-return?payload=$encodedPayload")
+                                        ).apply {
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+
+                                        startActivity(returnIntent)
+                                    } catch (e: Exception) {
+                                        Toast.makeText(
+                                            this@MainActivity,
+                                            "Return failed: ${e.message}",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
                                 },
                                 onError = { error ->
                                     Toast.makeText(
@@ -962,5 +1151,7 @@ class MainActivity : AppCompatActivity() {
             Manifest.permission.CAMERA,
             Manifest.permission.RECORD_AUDIO
         )
+        private const val PREF_DOCK_X_RATIO = "dock_x_ratio"
+        private const val PREF_DOCK_Y_RATIO = "dock_y_ratio"
     }
 }
